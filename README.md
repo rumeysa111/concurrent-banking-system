@@ -28,7 +28,7 @@ To compile the project, follow these steps:
 
 ```bash
 # Clone the repository
-git clone https://github.com/username/ConcurrentBankingSystem.git
+git clone https://github.com/rumeysa111/concurrent-banking-system.git
 cd ConcurrentBankingSystem
 
 # Compile using Makefile
