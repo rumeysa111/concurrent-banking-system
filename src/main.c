@@ -26,10 +26,11 @@ int main() {
         perror("shmat failed for accounts");
         exit(EXIT_FAILURE);
     }
-// shmget ortak bellek oluşturur
-// shmat ortak belleği bağlar
-// shmdt ortak belleği ayırır
-// shmctl bellek silme işlemleri için kullanılır
+    // shmget ortak bellek oluşturur
+    // shmat ortak belleği bağlar
+    // shmdt ortak belleği ayırır
+    // shmctl bellek silme işlemleri için kullanılır
+    
     // Transaction log'lar icin shared memory yarat
     int logs_shm_id = shmget(shm_key + 1, MAX_TRANSACTIONS * sizeof(TransactionLog), IPC_CREAT | 0666);
     if (logs_shm_id == -1) {
@@ -47,7 +48,6 @@ int main() {
     // Hesaplari dosyadan oku veya varsayilan degerlerle baslat
     // hesap bilgilerini accounts.txt dosyasından okumaya çalışır 
     // eğer dosya yoksa veya boşsa varsayılan hesapları oluşturur
-
     int num_accounts = initialize_accounts(ACCOUNTS_FILE, accounts, MAX_ACCOUNTS);
     if (num_accounts <= 0) {
         printf("Creating default accounts since no file was found or file was empty\n");
@@ -82,7 +82,14 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Her transaction icin child process yarat
+    // Başarısız işlemleri takip etmek için değişkenler
+    int failed_transactions[MAX_TRANSACTIONS]; // başarısız işlemlerin numaralarını saklamak için
+    int num_failed = 0; // başarısız işlem sayısı
+    pid_t transaction_pids[MAX_TRANSACTIONS]; // Tüm işlemlerin PID'leri
+    int transaction_results[MAX_TRANSACTIONS]; // İşlemlerin sonuçları
+    int completed_transactions = 0; // Tamamlanan işlem sayısı
+
+    // Her transaction için child process yarat
     for (int i = 0; i < num_transactions; i++) {
         pid_t pid = fork();
 
@@ -103,58 +110,119 @@ int main() {
                     result = process_transfer(accounts, logs, from_acc[i], to_acc[i], amount[i], i, sem_id);
                     break;
             }
-            exit(result);  // Cikis kodu: 0 (basari) veya -1 (hata)
+            exit(result);  // Çıkış kodu: 0 (başarı) veya -1 (hata)
+        }
+        else {
+            transaction_pids[i] = pid; // PID'yi sakla
         }
     }
-    // deposit =0 , withdraw =1, transfer =2
 
-    // Parent: Tüm çocukları bekle ve gerekirse retry yap
-    for (int i = 0; i < num_transactions; i++) {
+    // İşlemleri bekle ve başarısız olanları kaydet
+    while (completed_transactions < num_transactions) {
         int status;
-        wait(&status);
+        pid_t finished_pid = wait(&status);
+        
+        // Hangi işlem tamamlandı?
+        for (int i = 0; i < num_transactions; i++) {
+            if (transaction_pids[i] == finished_pid) {
+                // İşlem sonucunu kaydet
+                if (WIFEXITED(status)) {
+                    transaction_results[i] = WEXITSTATUS(status);
+                    
+                    // Başarısız işlemleri kaydet
+                    if (transaction_results[i] != SUCCESS) {
+                        failed_transactions[num_failed++] = i;
+                        printf("Debug: Transaction %d failed with exit code %d\n", i, transaction_results[i]);  // Hata ayıklama çıktısı
 
-        if (WIFEXITED(status) && WEXITSTATUS(status) == FAILURE) {
-            printf("Transaction %d failed. Retrying once...\n", i);
-
-            pid_t pid = fork();
-            if (pid == -1) {
-                perror("fork failed");
-                exit(EXIT_FAILURE);
-            } else if (pid == 0) {
-                int result;
-                switch (t_type[i]) {
-                    case DEPOSIT:
-                        result = process_deposit(accounts, logs, to_acc[i], amount[i], i, sem_id);
-                        break;
-                    case WITHDRAW:
-                        result = process_withdraw(accounts, logs, from_acc[i], amount[i], i, sem_id);
-                        break;
-                    case TRANSFER:
-                        result = process_transfer(accounts, logs, from_acc[i], to_acc[i], amount[i], i, sem_id);
-                        break;
+                    }
                 }
-                exit(result);
+                completed_transactions++;
+                break;
             }
-            wait(&status);  // Retry islemi beklenir
         }
     }
 
-    // Final hesap bakiyeleri yazdir
-    printf("Final account balances:\n");
-    for (int i = 0; i < num_accounts; i++) {
-        printf("Account %d: %d\n", accounts[i].account_id, accounts[i].balance);
-    }
-
-    // Transaction log yazdir
+    // Transaction log yazdır (ilk çalıştırma)
     printf("\nTransaction Log:\n");
     for (int i = 0; i < num_transactions; i++) {
         if (strcmp(logs[i].type, "Deposit") == 0) {
-            printf("Transaction %d: %s %d to Account %d (%s)\n", logs[i].transaction_id, logs[i].type, logs[i].amount, logs[i].to_account, logs[i].status);
+            printf("Transaction %d: %s %d to Account %d (%s)\n", 
+                   logs[i].transaction_id, logs[i].type, 
+                   logs[i].amount, logs[i].to_account, logs[i].status);
         } else if (strcmp(logs[i].type, "Withdraw") == 0) {
-            printf("Transaction %d: %s %d from Account %d (%s)\n", logs[i].transaction_id, logs[i].type, logs[i].amount, logs[i].from_account, logs[i].status);
+            printf("Transaction %d: %s %d from Account %d (%s)\n", 
+                   logs[i].transaction_id, logs[i].type, 
+                   logs[i].amount, logs[i].from_account, logs[i].status);
         } else if (strcmp(logs[i].type, "Transfer") == 0) {
-            printf("Transaction %d: %s %d from Account %d to Account %d (%s)\n", logs[i].transaction_id, logs[i].type, logs[i].amount, logs[i].from_account, logs[i].to_account, logs[i].status);
+            printf("Transaction %d: %s %d from Account %d to Account %d (%s)\n", 
+                   logs[i].transaction_id, logs[i].type, 
+                   logs[i].amount, logs[i].from_account, 
+                   logs[i].to_account, logs[i].status);
         }
+    }
+
+   // Başarısız işlemleri tekrar dene
+if (num_failed > 0) {
+    printf("\nRetrying %d failed transactions...\n", num_failed);
+}
+
+for (int j = 0; j < num_failed; j++) {
+    int i = failed_transactions[j];
+    
+    printf("Transaction %d failed. Retrying once...\n", i);
+    
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork failed");
+        exit(EXIT_FAILURE);
+    } else if (pid == 0) {
+        int result;
+        switch (t_type[i]) {
+            case DEPOSIT:
+                result = process_deposit(accounts, logs, to_acc[i], amount[i], i, sem_id);
+                break;
+            case WITHDRAW:
+                result = process_withdraw(accounts, logs, from_acc[i], amount[i], i, sem_id);
+                break;
+            case TRANSFER:
+                result = process_transfer(accounts, logs, from_acc[i], to_acc[i], amount[i], i, sem_id);
+                break;
+        }
+        exit(result);
+    }
+    
+    // Yeniden denenen işlemin tamamlanmasını bekle
+    int status;
+    wait(&status);
+    
+    // Yeniden denenen işlemin sonucu
+    int retry_result = FAILURE;
+    if (WIFEXITED(status)) {
+        retry_result = WEXITSTATUS(status);
+    }
+    printf("Retry result for transaction %d: %s\n", 
+           i, retry_result == SUCCESS ? "Success" : "Failed again");
+    
+    // Yeniden denenen işlemin logunu yazdır
+    if (strcmp(logs[i].type, "Transfer") == 0) {
+        printf("Transaction %d: %s %d from Account %d to Account %d (%s)\n", 
+               logs[i].transaction_id, logs[i].type, 
+               logs[i].amount, logs[i].from_account, 
+               logs[i].to_account, logs[i].status);
+    } else if (strcmp(logs[i].type, "Deposit") == 0) {
+        printf("Transaction %d: %s %d to Account %d (%s)\n", 
+               logs[i].transaction_id, logs[i].type, 
+               logs[i].amount, logs[i].to_account, logs[i].status);
+    } else if (strcmp(logs[i].type, "Withdraw") == 0) {
+        printf("Transaction %d: %s %d from Account %d (%s)\n", 
+               logs[i].transaction_id, logs[i].type, 
+               logs[i].amount, logs[i].from_account, logs[i].status);
+    }
+}
+    // Final hesap bakiyeleri yazdir
+    printf("\nFinal account balances:\n");
+    for (int i = 0; i < num_accounts; i++) {
+        printf("Account %d: %d\n", accounts[i].account_id, accounts[i].balance);
     }
 
     // Bellek temizligi

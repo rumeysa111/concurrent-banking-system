@@ -62,10 +62,10 @@ Contains account information. First line indicates the total number of accounts,
 ```
 5
 0, 500
-1, 600
-2, 700
-3, 800
-4, 900
+1, 500
+2, 500
+3, 500
+4, 500
 ```
 
 #### transactions.txt
@@ -191,13 +191,6 @@ Deadlock occurs when two or more processes are waiting for resources held by eac
 When the program finishes execution, it produces output similar to:
 
 ```
-Final account balances:
-Account 0: 630
-Account 1: 610
-Account 2: 205
-Account 3: 1355
-Account 4: 1010
-
 Transaction Log:
 Transaction 0: Deposit 100 to Account 0 (Success)
 Transaction 1: Withdraw 50 from Account 1 (Success)
@@ -207,5 +200,12 @@ Transaction 4: Transfer 30 from Account 1 to Account 0 (Success)
 Transaction 5: Withdraw 60 from Account 3 (Success)
 Transaction 6: Deposit 120 to Account 2 (Success)
 Transaction 7: Transfer 90 from Account 4 to Account 1 (Success)
+
+Final account balances:
+Account 0: 630
+Account 1: 470
+Account 2: 5
+Account 3: 1055
+Account 4: 610
 ```
 
