@@ -194,13 +194,17 @@ When the program finishes execution, it produces output similar to:
 Transaction Log:
 Transaction 0: Deposit 100 to Account 0 (Success)
 Transaction 1: Withdraw 50 from Account 1 (Success)
-Transaction 2: Transfer 615 from Account 2 to Account 3 (Success)
+Transaction 2: Transfer 615 from Account 2 to Account 3 (Failed)
 Transaction 3: Deposit 200 to Account 4 (Success)
 Transaction 4: Transfer 30 from Account 1 to Account 0 (Success)
 Transaction 5: Withdraw 60 from Account 3 (Success)
 Transaction 6: Deposit 120 to Account 2 (Success)
 Transaction 7: Transfer 90 from Account 4 to Account 1 (Success)
 
+Retrying 1 failed transactions...
+Transaction 2 failed. Retrying once...
+Retry result for transaction 2: Success
+Transaction 2: Transfer 615 from Account 2 to Account 3 (Success)
 Final account balances:
 Account 0: 630
 Account 1: 470
